@@ -21,15 +21,24 @@ static u64 kvm_riscv_current_cycles(struct kvm_guest_timer *gt)
 	return get_cycles64() + gt->time_delta;
 }
 
-static u64 kvm_riscv_delta_cycles2ns(u64 cycles,
-				     struct kvm_guest_timer *gt,
-				     struct kvm_vcpu_timer *t)
+/*
+ * Guest clock of one vCPU: with xcvhtime, VSTIP compares vstimecmp
+ * against time + htimedelta - hhidden_time.
+ */
+static u64 kvm_riscv_vcpu_current_cycles(struct kvm_vcpu *vcpu)
 {
+	return kvm_riscv_current_cycles(&vcpu->kvm->arch.timer) -
+	       kvm_riscv_vcpu_xcvhtime_hidden(vcpu);
+}
+
+static u64 kvm_riscv_delta_cycles2ns(u64 cycles, struct kvm_vcpu *vcpu)
+{
+	struct kvm_guest_timer *gt = &vcpu->kvm->arch.timer;
 	unsigned long flags;
 	u64 cycles_now, cycles_delta, delta_ns;
 
 	local_irq_save(flags);
-	cycles_now = kvm_riscv_current_cycles(gt);
+	cycles_now = kvm_riscv_vcpu_current_cycles(vcpu);
 	if (cycles_now < cycles)
 		cycles_delta = cycles - cycles_now;
 	else
@@ -45,10 +54,9 @@ static enum hrtimer_restart kvm_riscv_vcpu_hrtimer_expired(struct hrtimer *h)
 	u64 delta_ns;
 	struct kvm_vcpu_timer *t = container_of(h, struct kvm_vcpu_timer, hrt);
 	struct kvm_vcpu *vcpu = container_of(t, struct kvm_vcpu, arch.timer);
-	struct kvm_guest_timer *gt = &vcpu->kvm->arch.timer;
 
-	if (kvm_riscv_current_cycles(gt) < t->next_cycles) {
-		delta_ns = kvm_riscv_delta_cycles2ns(t->next_cycles, gt, t);
+	if (kvm_riscv_vcpu_current_cycles(vcpu) < t->next_cycles) {
+		delta_ns = kvm_riscv_delta_cycles2ns(t->next_cycles, vcpu);
 		hrtimer_forward_now(&t->hrt, ktime_set(0, delta_ns));
 		return HRTIMER_RESTART;
 	}
@@ -85,7 +93,6 @@ static int kvm_riscv_vcpu_update_vstimecmp(struct kvm_vcpu *vcpu, u64 ncycles)
 static int kvm_riscv_vcpu_update_hrtimer(struct kvm_vcpu *vcpu, u64 ncycles)
 {
 	struct kvm_vcpu_timer *t = &vcpu->arch.timer;
-	struct kvm_guest_timer *gt = &vcpu->kvm->arch.timer;
 	u64 delta_ns;
 
 	if (!t->init_done)
@@ -93,7 +100,7 @@ static int kvm_riscv_vcpu_update_hrtimer(struct kvm_vcpu *vcpu, u64 ncycles)
 
 	kvm_riscv_vcpu_unset_interrupt(vcpu, IRQ_VS_TIMER);
 
-	delta_ns = kvm_riscv_delta_cycles2ns(ncycles, gt, t);
+	delta_ns = kvm_riscv_delta_cycles2ns(ncycles, vcpu);
 	t->next_cycles = ncycles;
 	hrtimer_start(&t->hrt, ktime_set(0, delta_ns), HRTIMER_MODE_REL);
 	t->next_set = true;
@@ -113,10 +120,9 @@ static enum hrtimer_restart kvm_riscv_vcpu_vstimer_expired(struct hrtimer *h)
 	u64 delta_ns;
 	struct kvm_vcpu_timer *t = container_of(h, struct kvm_vcpu_timer, hrt);
 	struct kvm_vcpu *vcpu = container_of(t, struct kvm_vcpu, arch.timer);
-	struct kvm_guest_timer *gt = &vcpu->kvm->arch.timer;
 
-	if (kvm_riscv_current_cycles(gt) < t->next_cycles) {
-		delta_ns = kvm_riscv_delta_cycles2ns(t->next_cycles, gt, t);
+	if (kvm_riscv_vcpu_current_cycles(vcpu) < t->next_cycles) {
+		delta_ns = kvm_riscv_delta_cycles2ns(t->next_cycles, vcpu);
 		hrtimer_forward_now(&t->hrt, ktime_set(0, delta_ns));
 		return HRTIMER_RESTART;
 	}
@@ -130,9 +136,8 @@ static enum hrtimer_restart kvm_riscv_vcpu_vstimer_expired(struct hrtimer *h)
 bool kvm_riscv_vcpu_timer_pending(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu_timer *t = &vcpu->arch.timer;
-	struct kvm_guest_timer *gt = &vcpu->kvm->arch.timer;
 
-	if (!kvm_riscv_delta_cycles2ns(t->next_cycles, gt, t) ||
+	if (!kvm_riscv_delta_cycles2ns(t->next_cycles, vcpu) ||
 	    kvm_riscv_vcpu_has_interrupts(vcpu, 1UL << IRQ_VS_TIMER))
 		return true;
 	else
@@ -142,13 +147,12 @@ bool kvm_riscv_vcpu_timer_pending(struct kvm_vcpu *vcpu)
 static void kvm_riscv_vcpu_timer_blocking(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu_timer *t = &vcpu->arch.timer;
-	struct kvm_guest_timer *gt = &vcpu->kvm->arch.timer;
 	u64 delta_ns;
 
 	if (!t->init_done)
 		return;
 
-	delta_ns = kvm_riscv_delta_cycles2ns(t->next_cycles, gt, t);
+	delta_ns = kvm_riscv_delta_cycles2ns(t->next_cycles, vcpu);
 	hrtimer_start(&t->hrt, ktime_set(0, delta_ns), HRTIMER_MODE_REL);
 	t->next_set = true;
 }
