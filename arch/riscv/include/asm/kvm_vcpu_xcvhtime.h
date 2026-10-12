@@ -17,13 +17,18 @@ struct kvm_vcpu_xcvhtime {
 	u64 hvtimecmp;
 	u64 hexit_cycle;
 	u64 hhidden_cycle;
+	/* Last exit not hidden: rebase hexit_* before setting HHAE */
+	bool unhidden;
 };
 
 void kvm_riscv_xcvhtime_enable(void);
 void kvm_riscv_xcvhtime_disable(void);
+void kvm_riscv_xcvhtime_debugfs_init(void);
 void kvm_riscv_vcpu_xcvhtime_reset(struct kvm_vcpu *vcpu);
 void kvm_riscv_vcpu_xcvhtime_load(struct kvm_vcpu *vcpu);
 void kvm_riscv_vcpu_xcvhtime_put(struct kvm_vcpu *vcpu);
+void kvm_riscv_vcpu_xcvhtime_enter(struct kvm_vcpu *vcpu);
+void kvm_riscv_vcpu_xcvhtime_unhide(struct kvm_vcpu *vcpu);
 void kvm_riscv_vcpu_xcvhtime_sync(struct kvm_vcpu *vcpu);
 u64 kvm_riscv_vcpu_xcvhtime_hidden(struct kvm_vcpu *vcpu);
 int kvm_riscv_vcpu_xcvhtime_hvti(struct kvm_vcpu *vcpu);

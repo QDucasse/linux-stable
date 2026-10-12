@@ -66,6 +66,8 @@ static int truly_virtual_insn(struct kvm_vcpu *vcpu, struct kvm_run *run,
  */
 void kvm_riscv_vcpu_wfi(struct kvm_vcpu *vcpu)
 {
+	/* Never hide idle time, or the guest timer cannot fire */
+	kvm_riscv_vcpu_xcvhtime_unhide(vcpu);
 	if (!kvm_arch_vcpu_runnable(vcpu)) {
 		kvm_vcpu_srcu_read_unlock(vcpu);
 		kvm_vcpu_halt(vcpu);
