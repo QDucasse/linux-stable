@@ -103,6 +103,8 @@ static void kvm_riscv_reset_vcpu(struct kvm_vcpu *vcpu, bool kvm_sbi_reset)
 
 	kvm_riscv_vcpu_timer_reset(vcpu);
 
+	kvm_riscv_vcpu_xcvhtime_reset(vcpu);
+
 	kvm_riscv_vcpu_aia_reset(vcpu);
 
 	raw_spin_lock_irqsave(&vcpu->arch.irqs_pending_lock, flags);
@@ -415,6 +417,7 @@ void kvm_riscv_vcpu_sync_interrupts(struct kvm_vcpu *vcpu)
 	raw_spin_unlock_irqrestore(&v->irqs_pending_lock, flags);
 
 	/* Sync-up timer CSRs */
+	kvm_riscv_vcpu_xcvhtime_sync(vcpu);
 	kvm_riscv_vcpu_timer_sync(vcpu);
 }
 
@@ -625,6 +628,8 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	kvm_riscv_vcpu_aia_load(vcpu, cpu);
 
 csr_restore_done:
+	/* Always restored: kvm_arch_vcpu_put() clears them */
+	kvm_riscv_vcpu_xcvhtime_load(vcpu);
 	kvm_riscv_vcpu_timer_restore(vcpu);
 
 	kvm_riscv_vcpu_host_fp_save(&vcpu->arch.host_context);
@@ -652,6 +657,7 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 				     vcpu->arch.isa);
 	kvm_riscv_vcpu_host_fp_restore(&vcpu->arch.host_context);
 
+	kvm_riscv_vcpu_xcvhtime_put(vcpu);
 	kvm_riscv_vcpu_timer_save(vcpu);
 	kvm_riscv_vcpu_guest_vector_save(&vcpu->arch.guest_context,
 					 vcpu->arch.isa);

@@ -24,6 +24,7 @@
 #include <asm/kvm_vcpu_sbi.h>
 #include <asm/kvm_vcpu_sbi_fwft.h>
 #include <asm/kvm_vcpu_timer.h>
+#include <asm/kvm_vcpu_xcvhtime.h>
 #include <asm/kvm_vcpu_pmu.h>
 
 #define KVM_MAX_VCPUS			1024
@@ -219,6 +220,9 @@ struct kvm_vcpu_arch {
 
 	/* VCPU Timer */
 	struct kvm_vcpu_timer timer;
+
+	/* VCPU hidden time (xcvhtime) context */
+	struct kvm_vcpu_xcvhtime xcvhtime;
 
 	/* HFENCE request queue */
 	spinlock_t hfence_lock;
