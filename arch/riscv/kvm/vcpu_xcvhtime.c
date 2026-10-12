@@ -17,6 +17,19 @@ static bool xcvhtime_available(void)
 	return riscv_has_extension_unlikely(RISCV_ISA_EXT_XCVHTIME);
 }
 
+void kvm_riscv_xcvhtime_enable(void)
+{
+	/* mip[24] is only pending in V=1: it always traps out of the guest */
+	if (xcvhtime_available())
+		csr_set(CSR_IE, BIT(IRQ_XCV_HVTI));
+}
+
+void kvm_riscv_xcvhtime_disable(void)
+{
+	if (xcvhtime_available())
+		csr_clear(CSR_IE, BIT(IRQ_XCV_HVTI));
+}
+
 void kvm_riscv_vcpu_xcvhtime_reset(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu_xcvhtime *h = &vcpu->arch.xcvhtime;
@@ -69,4 +82,14 @@ void kvm_riscv_vcpu_xcvhtime_sync(struct kvm_vcpu *vcpu)
 u64 kvm_riscv_vcpu_xcvhtime_hidden(struct kvm_vcpu *vcpu)
 {
 	return vcpu->arch.xcvhtime.hhidden_time;
+}
+
+int kvm_riscv_vcpu_xcvhtime_hvti(struct kvm_vcpu *vcpu)
+{
+	/* Level-triggered: disarm, or it fires again on guest entry */
+	csr_write(CSR_HVTIMECMP, -1UL);
+	vcpu->arch.xcvhtime.hvtimecmp = -1ULL;
+	vcpu->stat.hvti_exit_stat++;
+
+	return 1;
 }

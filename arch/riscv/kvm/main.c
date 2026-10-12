@@ -49,6 +49,8 @@ int kvm_arch_enable_virtualization_cpu(void)
 
 	csr_write(CSR_HVIP, 0);
 
+	kvm_riscv_xcvhtime_enable();
+
 	kvm_riscv_aia_enable();
 
 	return 0;
@@ -57,6 +59,8 @@ int kvm_arch_enable_virtualization_cpu(void)
 void kvm_arch_disable_virtualization_cpu(void)
 {
 	kvm_riscv_aia_disable();
+
+	kvm_riscv_xcvhtime_disable();
 
 	/*
 	 * After clearing the hideleg CSR, the host kernel will receive

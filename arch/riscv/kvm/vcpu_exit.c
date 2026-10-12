@@ -189,6 +189,10 @@ int kvm_riscv_vcpu_exit(struct kvm_vcpu *vcpu, struct kvm_run *run,
 {
 	int ret;
 
+	/* Hidden-time deadline: only pending in V=1, so handle it here */
+	if (trap->scause == (CAUSE_IRQ_FLAG | IRQ_XCV_HVTI))
+		return kvm_riscv_vcpu_xcvhtime_hvti(vcpu);
+
 	/* If we got host interrupt then do nothing */
 	if (trap->scause & CAUSE_IRQ_FLAG)
 		return 1;
