@@ -99,6 +99,8 @@
 #define IRQ_M_EXT		11
 #define IRQ_S_GEXT		12
 #define IRQ_PMU_OVF		13
+/* CORE-V hidden time (xcvhtime): hvtimecmp deadline, always taken in HS */
+#define IRQ_XCV_HVTI		24
 #define IRQ_LOCAL_MAX		(IRQ_PMU_OVF + 1)
 #define IRQ_LOCAL_MASK		GENMASK((IRQ_LOCAL_MAX - 1), 0)
 
@@ -383,6 +385,15 @@
 #define CSR_HVIP		0x645
 #define CSR_HTINST		0x64a
 #define CSR_HGATP		0x680
+
+/* CORE-V hidden time (xcvhtime) */
+#define CSR_HTIMECTL		0x6c0
+#define CSR_HEXIT_TIME		0x6c1
+#define CSR_HHIDDEN_TIME	0x6c2
+#define CSR_HVTIMECMP		0x6c3
+#define CSR_HEXIT_CYCLE		0x6c4
+#define CSR_HHIDDEN_CYCLE	0x6c5
+#define HTIMECTL_HHAE		_AC(0x1, UL)
 #define CSR_HGEIP		0xe12
 
 /* Virtual Interrupts and Interrupt Priorities (H-extension with AIA) */
