@@ -393,6 +393,8 @@
 #define CSR_HVTIMECMP		0x6c3
 #define CSR_HEXIT_CYCLE		0x6c4
 #define CSR_HHIDDEN_CYCLE	0x6c5
+#define CSR_HEXIT_INSTRET	0x6c6
+#define CSR_HHIDDEN_INSTRET	0x6c7
 #define HTIMECTL_HHAE		_AC(0x1, UL)
 #define CSR_HGEIP		0xe12
 

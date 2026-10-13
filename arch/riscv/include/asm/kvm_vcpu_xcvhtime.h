@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * CORE-V hidden time (xcvhtime): per-vCPU state of the six hidden-time CSRs.
+ * CORE-V hidden time (xcvhtime): per-vCPU state of the eight hidden-time CSRs.
  */
 
 #ifndef __KVM_VCPU_RISCV_XCVHTIME_H
@@ -17,6 +17,8 @@ struct kvm_vcpu_xcvhtime {
 	u64 hvtimecmp;
 	u64 hexit_cycle;
 	u64 hhidden_cycle;
+	u64 hexit_instret;
+	u64 hhidden_instret;
 	/* Last exit not hidden: rebase hexit_* before setting HHAE */
 	bool unhidden;
 };

@@ -38,9 +38,13 @@ void kvm_riscv_xcvhtime_debugfs_init(void)
 
 void kvm_riscv_xcvhtime_enable(void)
 {
+	if (!xcvhtime_available())
+		return;
+
 	/* mip[24] is only pending in V=1: it always traps out of the guest */
-	if (xcvhtime_available())
-		csr_set(CSR_IE, BIT(IRQ_XCV_HVTI));
+	csr_set(CSR_IE, BIT(IRQ_XCV_HVTI));
+	/* Guest instret reads return vinstret = minstret - hhidden_instret */
+	csr_set(CSR_HCOUNTEREN, BIT(CSR_INSTRET - CSR_CYCLE));
 }
 
 void kvm_riscv_xcvhtime_disable(void)
@@ -70,6 +74,8 @@ void kvm_riscv_vcpu_xcvhtime_load(struct kvm_vcpu *vcpu)
 	csr_write(CSR_HVTIMECMP, h->hvtimecmp);
 	csr_write(CSR_HEXIT_CYCLE, h->hexit_cycle);
 	csr_write(CSR_HHIDDEN_CYCLE, h->hhidden_cycle);
+	csr_write(CSR_HEXIT_INSTRET, h->hexit_instret);
+	csr_write(CSR_HHIDDEN_INSTRET, h->hhidden_instret);
 	csr_write(CSR_HTIMECTL, h->htimectl);
 }
 
@@ -86,6 +92,8 @@ void kvm_riscv_vcpu_xcvhtime_put(struct kvm_vcpu *vcpu)
 	h->hvtimecmp = csr_read(CSR_HVTIMECMP);
 	h->hexit_cycle = csr_read(CSR_HEXIT_CYCLE);
 	h->hhidden_cycle = csr_read(CSR_HHIDDEN_CYCLE);
+	h->hexit_instret = csr_read(CSR_HEXIT_INSTRET);
+	h->hhidden_instret = csr_read(CSR_HHIDDEN_INSTRET);
 
 	/* Exit to userspace or preemption: not hidden (section 8.2) */
 	h->htimectl &= ~HTIMECTL_HHAE;
@@ -118,8 +126,10 @@ void kvm_riscv_vcpu_xcvhtime_enter(struct kvm_vcpu *vcpu)
 	if (h->unhidden) {
 		h->hexit_time = csr_read(CSR_TIME);
 		h->hexit_cycle = csr_read(CSR_CYCLE);
+		h->hexit_instret = csr_read(CSR_INSTRET);
 		csr_write(CSR_HEXIT_TIME, h->hexit_time);
 		csr_write(CSR_HEXIT_CYCLE, h->hexit_cycle);
+		csr_write(CSR_HEXIT_INSTRET, h->hexit_instret);
 		h->unhidden = false;
 	}
 	if (!(h->htimectl & HTIMECTL_HHAE)) {
