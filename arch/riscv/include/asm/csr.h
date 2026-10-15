@@ -396,6 +396,7 @@
 #define CSR_HEXIT_INSTRET	0x6c6
 #define CSR_HHIDDEN_INSTRET	0x6c7
 #define HTIMECTL_HHAE		_AC(0x1, UL)
+#define HTIMECTL_HFRZ		_AC(0x2, UL)
 #define CSR_HGEIP		0xe12
 
 /* Virtual Interrupts and Interrupt Priorities (H-extension with AIA) */

@@ -7,6 +7,12 @@
  * guest with HHAE=1, so every exit handled in-kernel is hidden; WFI and
  * vcpu_put (exit to userspace, preemption) clear it, so sleep and
  * descheduled time stay visible.
+ *
+ * The test-only knob kvm/xcvhtime_freeze arms HFRZ on every entry, so the
+ * hart's caches, TLBs and predictors stay frozen during every exit. WFI and
+ * vcpu_put clear it. Preemption is not disabled during a frozen exit: some
+ * handlers sleep (G-stage faults), and a sleep or a preemption goes through
+ * vcpu_put, so no other task runs frozen.
  */
 
 #include <linux/debugfs.h>
@@ -16,6 +22,9 @@
 #include <asm/kvm_vcpu_xcvhtime.h>
 
 static bool xcvhtime_hide;
+static bool xcvhtime_freeze;
+/* HFRZ is WARL: it reads 0 on harts without the cache freeze */
+static bool xcvhtime_has_hfrz;
 
 static bool xcvhtime_available(void)
 {
@@ -33,6 +42,14 @@ void kvm_riscv_xcvhtime_debugfs_init(void)
 	if (IS_ERR_OR_NULL(dir))
 		return;
 	debugfs_create_bool("xcvhtime_hide", 0644, dir, &xcvhtime_hide);
+
+	/* No vCPU is loaded yet: htimectl is 0 and V=0, so this arms nothing */
+	csr_write(CSR_HTIMECTL, HTIMECTL_HFRZ);
+	xcvhtime_has_hfrz = csr_read(CSR_HTIMECTL) & HTIMECTL_HFRZ;
+	csr_write(CSR_HTIMECTL, 0);
+	if (xcvhtime_has_hfrz)
+		debugfs_create_bool("xcvhtime_freeze", 0644, dir,
+				    &xcvhtime_freeze);
 	dput(dir);
 }
 
@@ -95,8 +112,8 @@ void kvm_riscv_vcpu_xcvhtime_put(struct kvm_vcpu *vcpu)
 	h->hexit_instret = csr_read(CSR_HEXIT_INSTRET);
 	h->hhidden_instret = csr_read(CSR_HHIDDEN_INSTRET);
 
-	/* Exit to userspace or preemption: not hidden (section 8.2) */
-	h->htimectl &= ~HTIMECTL_HHAE;
+	/* Exit to userspace or preemption: not hidden or frozen (section 8.2) */
+	h->htimectl &= ~(HTIMECTL_HHAE | HTIMECTL_HFRZ);
 	h->unhidden = true;
 
 	/* Nothing hidden or armed while no vCPU is loaded */
@@ -108,20 +125,25 @@ void kvm_riscv_vcpu_xcvhtime_put(struct kvm_vcpu *vcpu)
 void kvm_riscv_vcpu_xcvhtime_enter(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu_xcvhtime *h = &vcpu->arch.xcvhtime;
+	u64 ctl;
 
 	if (!xcvhtime_available())
 		return;
 
+	/* HHAE and HFRZ must already be 1 when the exit happens */
+	ctl = h->htimectl & ~(HTIMECTL_HHAE | HTIMECTL_HFRZ);
+	if (xcvhtime_has_hfrz && READ_ONCE(xcvhtime_freeze))
+		ctl |= HTIMECTL_HFRZ;
+
 	if (!READ_ONCE(xcvhtime_hide)) {
 		if (h->htimectl & HTIMECTL_HHAE)
-			kvm_riscv_vcpu_xcvhtime_unhide(vcpu);
-		return;
+			h->unhidden = true;
+		goto write;
 	}
 
 	/*
-	 * HHAE must already be 1 when the exit happens, so it is set on every
-	 * entry. After an exit that was not hidden, hexit_* still hold that
-	 * exit's time: rebase them to now so the entry hides nothing.
+	 * After an exit that was not hidden, hexit_* still hold that exit's
+	 * time: rebase them to now so the entry hides nothing.
 	 */
 	if (h->unhidden) {
 		h->hexit_time = csr_read(CSR_TIME);
@@ -132,13 +154,19 @@ void kvm_riscv_vcpu_xcvhtime_enter(struct kvm_vcpu *vcpu)
 		csr_write(CSR_HEXIT_INSTRET, h->hexit_instret);
 		h->unhidden = false;
 	}
-	if (!(h->htimectl & HTIMECTL_HHAE)) {
-		h->htimectl |= HTIMECTL_HHAE;
-		csr_write(CSR_HTIMECTL, h->htimectl);
+	ctl |= HTIMECTL_HHAE;
+
+write:
+	if (ctl != h->htimectl) {
+		h->htimectl = ctl;
+		csr_write(CSR_HTIMECTL, ctl);
 	}
 }
 
-/* Make the last exit visible: the guest clock runs live again (section 8.1) */
+/*
+ * Make the last exit visible: the guest clock runs live again (section 8.1).
+ * Clearing HFRZ also ends the freeze, so the idle host runs at full speed.
+ */
 void kvm_riscv_vcpu_xcvhtime_unhide(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu_xcvhtime *h = &vcpu->arch.xcvhtime;
@@ -146,7 +174,7 @@ void kvm_riscv_vcpu_xcvhtime_unhide(struct kvm_vcpu *vcpu)
 	if (!xcvhtime_available())
 		return;
 
-	h->htimectl &= ~HTIMECTL_HHAE;
+	h->htimectl &= ~(HTIMECTL_HHAE | HTIMECTL_HFRZ);
 	csr_write(CSR_HTIMECTL, h->htimectl);
 	h->unhidden = true;
 }
